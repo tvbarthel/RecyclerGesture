@@ -99,6 +99,7 @@ public class DragActivity extends ActionBarActivity {
         new SwipeToDismissGesture.Builder(dismissDirection)
             .on(recyclerView)
             .apply(new DummySwipeStrategy())
+            .backgroundColor(Color.RED)
             .build();
     }
 

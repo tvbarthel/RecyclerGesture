@@ -166,7 +166,8 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
 
     @Override
     public boolean onInterceptTouchEvent(RecyclerView recyclerView, MotionEvent event) {
-        if (!enabled || disallowIntercept) {
+        this.disallowIntercept = false;
+        if (!enabled) {
             return false;
         }
 

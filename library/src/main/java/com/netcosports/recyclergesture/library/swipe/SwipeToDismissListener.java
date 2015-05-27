@@ -1,10 +1,13 @@
 package com.netcosports.recyclergesture.library.swipe;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.support.v7.widget.RecyclerView;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.view.ViewGroup;
 
 /**
  * Simple {@link android.support.v7.widget.RecyclerView.OnItemTouchListener}
@@ -28,24 +31,34 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
     private VelocityTracker mVelocityTracker;
     private float mTranslationX;
     private boolean mEnabled;
+    private boolean mEnable = false;
+    private boolean mIsDismissing = true;
     private View mSwipeView;
     private SwipeToDismissDirection mAllowedSwipeToDismissDirection = SwipeToDismissDirection.NONE;
     private SwipeToDismissStrategy mDismissStrategy;
     private SwipeToDismissGesture.Dismisser mDismisser;
     private boolean mDisallowIntercept;
 
+    // Fake background only used when the recycler background is transparent.
+    private int mBackgroundColor; // color used when recycler background is transparent.
+    private View mBackground; // background used when recycler background is transparent.
+    private Runnable mDelayedBackgroundDismiss;
+    private boolean mIsRemoving;
+
 
     /**
      * Constructs a new swipe-to-dismiss OnItemTouchListener for RecyclerView
      *
-     * @param recyclerView RecyclerView
-     * @param direction    swipe direction.
-     * @param dismisser    Dismisser used to process to the dismiss when dismiss motion is triggered.
-     * @param strategy     strategy applied for dismiss motion, if null all items will follow the main policy.
+     * @param recyclerView    RecyclerView
+     * @param direction       swipe direction.
+     * @param dismisser       Dismisser used to process to the dismiss when dismiss motion is triggered.
+     * @param strategy        strategy applied for dismiss motion, if null all items will follow the main policy.
+     * @param backgroundColor color displayed under swiped view when recycler background is transparent.
+     *                        -1 if none should be used.
      */
     SwipeToDismissListener(RecyclerView recyclerView, SwipeToDismissDirection direction,
-                           SwipeToDismissStrategy strategy, SwipeToDismissGesture.Dismisser dismisser) {
-
+                           SwipeToDismissStrategy strategy, SwipeToDismissGesture.Dismisser dismisser,
+                           int backgroundColor) {
         ViewConfiguration vc = ViewConfiguration.get(recyclerView.getContext());
         mSlop = vc.getScaledTouchSlop();
         mMinFlingVelocity = vc.getScaledMinimumFlingVelocity() * 4;
@@ -59,8 +72,20 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
             mDismissStrategy = strategy;
         }
         mDismissStrategy.setDefaultSwipeToDismissDirection(direction);
+
         mEnabled = true;
         mDisallowIntercept = false;
+
+        mBackgroundColor = backgroundColor;
+        mBackground = null;
+        mIsDismissing = false;
+        mIsRemoving = false;
+        mDelayedBackgroundDismiss = new Runnable() {
+            @Override
+            public void run() {
+                resetBackground();
+            }
+        };
     }
 
     /**
@@ -103,7 +128,8 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
 
     @Override
     public boolean onInterceptTouchEvent(final RecyclerView view, MotionEvent motionEvent) {
-        if (!mEnabled || mDisallowIntercept) {
+        mDisallowIntercept = false;
+        if (!mEnabled) {
             return false;
         }
         // offset because the view is translated during swipe
@@ -126,7 +152,7 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
     }
 
     private boolean down(MotionEvent motionEvent) {
-        if (!mEnabled || mDisallowIntercept) {
+        if (!mEnabled || mDisallowIntercept || mIsDismissing) {
             return false;
         }
 
@@ -136,6 +162,7 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
         if (mSwipeView == null) {
             return false;
         }
+
         int pos = mRecyclerView.getChildAdapterPosition(mSwipeView);
 
         // check specific policy for a given item.
@@ -163,6 +190,8 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
             .setDuration(mAnimationTime)
             .setListener(null);
 
+        removeBackground(false);
+
         mVelocityTracker.recycle();
         mVelocityTracker = null;
         mTranslationX = 0;
@@ -176,6 +205,7 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
         if (!mEnabled || mVelocityTracker == null || mSwipeView == null || !mSwiping) {
             return;
         }
+        mIsDismissing = true;
         mSwipeView.setPressed(false);
         float deltaX = motionEvent.getRawX() - mDownX;
         float deltaY = motionEvent.getRawY() - mDownY;
@@ -199,9 +229,10 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
                     mRecyclerView.getAdapter().notifyItemRemoved(pos);
                     swipeViewCopy.setTranslationX(0);
                     swipeViewCopy.setTranslationY(0);
-
                 }
             }, mAnimationTime + 100);
+
+            removeBackground(true);
 
         } else if (mSwiping) {
             // cancel
@@ -210,7 +241,13 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
                 .translationY(0)
                 .alpha(1)
                 .setDuration(mAnimationTime)
-                .setListener(null);
+                .setListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        super.onAnimationEnd(animation);
+                        removeBackground(false);
+                    }
+                });
         }
 
         resetMotion();
@@ -234,6 +271,20 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
             cancelEvent.setAction(MotionEvent.ACTION_CANCEL
                 | (motionEvent.getActionIndex() << MotionEvent.ACTION_POINTER_INDEX_SHIFT));
             mSwipeView.onTouchEvent(cancelEvent);
+
+            // display a simple view to fill the blank space let by the swiped view.
+            if (mBackgroundColor != -1 && mBackground == null) {
+                mBackground = new View(mRecyclerView.getContext());
+                mBackground.setBackgroundColor(mBackgroundColor);
+                mBackground.setX(mSwipeView.getX());
+                mBackground.setY(mSwipeView.getY());
+                ViewGroup.LayoutParams layoutParams
+                    = new ViewGroup.LayoutParams(mSwipeView.getWidth(), mSwipeView.getHeight());
+                mBackground.setLayoutParams(layoutParams);
+
+                int index = ((ViewGroup) mRecyclerView.getParent()).indexOfChild(mRecyclerView);
+                ((ViewGroup) mRecyclerView.getParent()).addView(mBackground, Math.max(0, index - 1));
+            }
         }
 
         //Prevent swipes to disallowed directions
@@ -249,6 +300,8 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
                     .alpha(1)
                     .setDuration(mAnimationTime)
                     .setListener(null);
+
+                removeBackground(false);
             }
             resetMotion();
             return false;
@@ -262,6 +315,24 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
         return false;
     }
 
+    private void removeBackground(boolean delayed) {
+        if (mBackground != null) {
+            if (delayed) {
+                mRecyclerView.postDelayed(mDelayedBackgroundDismiss, mAnimationTime * 3 + 100);
+            } else {
+                resetBackground();
+            }
+        } else {
+            mIsDismissing = false;
+        }
+    }
+
+    private void resetBackground() {
+        ((ViewGroup) mRecyclerView.getParent()).removeView(mBackground);
+        mBackground = null;
+        mIsDismissing = false;
+    }
+
     private void resetMotion() {
         if (mVelocityTracker != null) {
             mVelocityTracker.recycle();
@@ -272,6 +343,5 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
         mDownY = 0;
         mSwiping = false;
         mSwipeView = null;
-
     }
 }
