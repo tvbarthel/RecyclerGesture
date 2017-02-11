@@ -56,6 +56,7 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
     private int activePointerId;
     private boolean dragging;
     private boolean enabled = true;
+    private boolean disallowIntercept;
 
     /**
      * Bitmap used to build the view displayed as dragging thumbnail.
@@ -133,9 +134,9 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
      * @param dragStrategy strategy used to enable drag on items.
      * @param listener     listener used to catch motion events.
      */
-    public DragDropListener(RecyclerView recyclerView, RecyclerView.Adapter adapter
-      , DragDropGesture.Swapper swapper, DragBehavior dragBehavior, DragStrategy dragStrategy
-      , DragDropGesture.Listener listener) {
+    DragDropListener(RecyclerView recyclerView, RecyclerView.Adapter adapter
+        , DragDropGesture.Swapper swapper, DragBehavior dragBehavior, DragStrategy dragStrategy
+        , DragDropGesture.Listener listener) {
         this.dragBehavior = dragBehavior;
         this.recyclerView = recyclerView;
         this.dragStrategy = dragStrategy;
@@ -158,11 +159,14 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
         this.nextDividerViewHolder = null;
         this.previousDividerPosition = -1;
         this.nextDividerPosition = -1;
+
+        this.enabled = true;
+        this.disallowIntercept = false;
     }
 
     @Override
     public boolean onInterceptTouchEvent(RecyclerView recyclerView, MotionEvent event) {
-        if (!enabled) {
+        if (!enabled || disallowIntercept) {
             return false;
         }
 
@@ -191,7 +195,7 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
 
     @Override
     public void onTouchEvent(RecyclerView view, MotionEvent event) {
-        if (!dragging) {
+        if (!dragging || disallowIntercept) {
             return;
         }
 
@@ -214,6 +218,11 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
         }
     }
 
+    @Override
+    public void onRequestDisallowInterceptTouchEvent(boolean disallowIntercept) {
+        this.disallowIntercept = disallowIntercept;
+    }
+
     /**
      * Enable/disable drag/drop
      *
@@ -225,7 +234,7 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
 
     private void startDrag() {
         View viewUnder = recyclerView.findChildViewUnder(downX, downY);
-        mobileViewCurrentPos = recyclerView.getChildPosition(viewUnder);
+        mobileViewCurrentPos = recyclerView.getChildAdapterPosition(viewUnder);
         if (viewUnder == null) {
             return;
         }
@@ -248,7 +257,7 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
         mobileViewStartX = mobileView.getX();
 
         ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams(
-          ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         ((ViewGroup) recyclerView.getParent()).addView(mobileView, lp);
         mobileView.bringToFront();
         viewUnder.setVisibility(View.INVISIBLE);
@@ -290,8 +299,8 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
             }
         }
 
-        previousDividerViewHolder = recyclerView.findViewHolderForPosition(previousDividerPosition);
-        nextDividerViewHolder = recyclerView.findViewHolderForPosition(nextDividerPosition);
+        previousDividerViewHolder = recyclerView.findViewHolderForAdapterPosition(previousDividerPosition);
+        nextDividerViewHolder = recyclerView.findViewHolderForAdapterPosition(nextDividerPosition);
     }
 
     private boolean down(MotionEvent event) {
@@ -320,7 +329,7 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
         if (previousDividerViewHolder != null) {
             View previousDivider = previousDividerViewHolder.itemView;
             if (previousDivider != null
-              && dragBehavior.willHoverPreviousDivider(previousDivider, mobileViewX, mobileViewY)) {
+                && dragBehavior.willHoverPreviousDivider(previousDivider, mobileViewX, mobileViewY)) {
                 return false;
             }
         }
@@ -328,7 +337,7 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
         if (nextDividerViewHolder != null) {
             View nextDivider = nextDividerViewHolder.itemView;
             if (nextDivider != null
-              && dragBehavior.willHoverNextDivider(nextDivider, mobileViewX, mobileViewY)) {
+                && dragBehavior.willHoverNextDivider(nextDivider, mobileViewX, mobileViewY)) {
                 return false;
             }
         }
@@ -366,12 +375,6 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
 
         onItemSwitch(originalViewPos, switchViewPos);
 
-        switchView.setVisibility(View.INVISIBLE);
-        originalView.setVisibility(View.VISIBLE);
-
-        dragBehavior.getSwitchAnimator(originalView, switchView)
-          .setDuration(MOVE_DURATION);
-
         mobileViewCurrentPos = switchViewPos;
     }
 
@@ -393,22 +396,22 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
         if (view != null && mobileView != null) {
 
             dragBehavior.getDropAnimator(mobileView, view)
-              .setDuration(MOVE_DURATION)
-              .setListener(new AnimatorListenerAdapter() {
-                  @Override
-                  public void onAnimationEnd(Animator animation) {
-                      view.setVisibility(View.VISIBLE);
-                      if (mobileView != null) {
-                          ViewGroup parent = (ViewGroup) mobileView.getParent();
-                          parent.removeView(mobileView);
-                          draggingThumbnail.recycle();
-                          draggingThumbnail = null;
-                          mobileView = null;
-                          recyclerView.removeCallbacks(autoScroller);
-                      }
-                  }
-              })
-              .start();
+                .setDuration(MOVE_DURATION)
+                .setListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        view.setVisibility(View.VISIBLE);
+                        if (mobileView != null) {
+                            ViewGroup parent = (ViewGroup) mobileView.getParent();
+                            parent.removeView(mobileView);
+                            draggingThumbnail.recycle();
+                            draggingThumbnail = null;
+                            mobileView = null;
+                            recyclerView.removeCallbacks(autoScroller);
+                        }
+                    }
+                })
+                .start();
         }
 
         dragging = false;
@@ -426,11 +429,11 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
      */
     private void onItemSwitch(int from, int to) {
         swapper.swapPositions(from, to);
-        adapter.notifyItemChanged(to);
+        adapter.notifyItemMoved(from, to);
     }
 
     private View getViewByPosition(int position) {
-        RecyclerView.ViewHolder viewHolder = recyclerView.findViewHolderForPosition(position);
+        RecyclerView.ViewHolder viewHolder = recyclerView.findViewHolderForAdapterPosition(position);
         return viewHolder == null ? null : viewHolder.itemView;
     }
 
@@ -522,11 +525,11 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
 
         private int direction;
 
-        public AutoScroller() {
+        AutoScroller() {
 
         }
 
-        public void startScrolling(int direction) {
+        void startScrolling(int direction) {
             if (direction != START && direction != END) {
                 throw new IllegalArgumentException("Direction unknown");
             }
@@ -535,7 +538,7 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
             recyclerView.post(this);
         }
 
-        public void stopScrolling() {
+        void stopScrolling() {
             isScrolling = false;
             recyclerView.removeCallbacks(this);
         }
@@ -548,17 +551,17 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
             float nextY = mobileView.getY() + direction * scrollAmount;
 
             if (previousDividerPosition != -1) {
-                previousDividerViewHolder = recyclerView.findViewHolderForPosition(previousDividerPosition);
+                previousDividerViewHolder = recyclerView.findViewHolderForAdapterPosition(previousDividerPosition);
             }
 
             if (nextDividerPosition != -1) {
-                nextDividerViewHolder = recyclerView.findViewHolderForPosition(nextDividerPosition);
+                nextDividerViewHolder = recyclerView.findViewHolderForAdapterPosition(nextDividerPosition);
             }
 
             if (previousDividerViewHolder != null) {
                 View previousDivider = previousDividerViewHolder.itemView;
                 if (previousDivider != null
-                  && dragBehavior.willHoverPreviousDivider(previousDivider, nextX, nextY)) {
+                    && dragBehavior.willHoverPreviousDivider(previousDivider, nextX, nextY)) {
                     // stop scrolling when blocked by a divider
                     isScrolling = false;
                     return;
@@ -568,7 +571,7 @@ class DragDropListener implements RecyclerView.OnItemTouchListener {
             if (nextDividerViewHolder != null) {
                 View nextDivider = nextDividerViewHolder.itemView;
                 if (nextDivider != null
-                  && dragBehavior.willHoverNextDivider(nextDivider, nextX, nextY)) {
+                    && dragBehavior.willHoverNextDivider(nextDivider, nextX, nextY)) {
                     // stop scrolling when blocked by a divider
                     isScrolling = false;
                     return;

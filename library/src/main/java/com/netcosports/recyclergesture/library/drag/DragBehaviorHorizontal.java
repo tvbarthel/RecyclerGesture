@@ -27,15 +27,6 @@ class DragBehaviorHorizontal implements DragBehavior {
     }
 
     @Override
-    public ViewPropertyAnimator getSwitchAnimator(View viewToAnimate, View dest) {
-        int switchViewLeft = dest.getLeft();
-        int originalViewLeft = viewToAnimate.getLeft();
-        int delta = originalViewLeft - switchViewLeft;
-        viewToAnimate.setTranslationX(-delta);
-        return viewToAnimate.animate().translationXBy(delta);
-    }
-
-    @Override
     public ViewPropertyAnimator getDropAnimator(View viewToAnimate, View dest) {
         float x = dest.getX();
         return viewToAnimate.animate().translationX(x);

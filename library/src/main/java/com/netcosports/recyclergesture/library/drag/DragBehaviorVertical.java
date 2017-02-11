@@ -27,16 +27,6 @@ class DragBehaviorVertical implements DragBehavior {
     }
 
     @Override
-    public ViewPropertyAnimator getSwitchAnimator(View viewToAnimate, View dest) {
-        // simply move the view to animate on the destination one with a vertical motion.
-        int switchViewTop = dest.getTop();
-        int originalViewTop = viewToAnimate.getTop();
-        int delta = originalViewTop - switchViewTop;
-        viewToAnimate.setTranslationY(-delta);
-        return viewToAnimate.animate().translationYBy(delta);
-    }
-
-    @Override
     public ViewPropertyAnimator getDropAnimator(View viewToAnimate, View dest) {
         float y = dest.getY();
         return viewToAnimate.animate().translationY(y);
