@@ -61,8 +61,8 @@ public class DragActivity extends ActionBarActivity {
 
         Bundle args = getIntent().getExtras();
         if (args == null
-                || !args.containsKey(KEY_HORIZONTAL)
-                || !args.containsKey(KEY_DIVIDER)) {
+            || !args.containsKey(KEY_HORIZONTAL)
+            || !args.containsKey(KEY_DIVIDER)) {
             throw new IllegalArgumentException("Use start activity pattern");
         }
         boolean isHorizontal = args.getBoolean(KEY_HORIZONTAL);
@@ -81,12 +81,12 @@ public class DragActivity extends ActionBarActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this, orientation, false));
         recyclerView.setHasFixedSize(true);
 
-        DummyAdapter adapter = new DummyAdapter(this.models);
+        DummyAdapter adapter = new DummyAdapter(this, this.models, isHorizontal);
         recyclerView.setAdapter(adapter);
 
         DragDropGesture.Builder dragBuilder = new DragDropGesture.Builder()
-                .on(recyclerView)
-                .apply(new DummyDragStrategy());
+            .on(recyclerView)
+            .apply(new DummyDragStrategy());
 
 
         SwipeToDismissDirection dismissDirection = SwipeToDismissDirection.HORIZONTAL;
@@ -97,9 +97,9 @@ public class DragActivity extends ActionBarActivity {
         dragBuilder.build();
 
         new SwipeToDismissGesture.Builder(dismissDirection)
-                .on(recyclerView)
-                .apply(new DummySwipeStrategy())
-                .build();
+            .on(recyclerView)
+            .apply(new DummySwipeStrategy())
+            .build();
     }
 
     /**
@@ -155,14 +155,29 @@ public class DragActivity extends ActionBarActivity {
      */
     private static class DummyAdapter extends SwappableAdapter<DummyModel, DummyViewHolder> {
 
-        public DummyAdapter(ArrayList<DummyModel> items) {
+        private final boolean isHorizontal;
+        private final int size;
+
+        public DummyAdapter(Context context, ArrayList<DummyModel> items, boolean isHorizontal) {
             super(items);
+            this.isHorizontal = isHorizontal;
+            size = context.getResources().getDimensionPixelSize(R.dimen.dummy_item_size);
         }
 
         @Override
         public DummyViewHolder onCreateViewHolder(ViewGroup viewGroup, final int position) {
             View itemView = LayoutInflater.from(viewGroup.getContext()).
-                    inflate(R.layout.dummy_item, viewGroup, false);
+                inflate(R.layout.dummy_item, viewGroup, false);
+
+            RecyclerView.LayoutParams params;
+            if (isHorizontal) {
+                params = new RecyclerView.LayoutParams(size, RecyclerView.LayoutParams.MATCH_PARENT);
+            } else {
+                params = new RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, size);
+            }
+
+            itemView.setLayoutParams(params);
+
             return new DummyViewHolder(itemView);
         }
 

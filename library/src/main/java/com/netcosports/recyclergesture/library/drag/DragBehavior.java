@@ -38,19 +38,6 @@ interface DragBehavior {
     public boolean shouldSwitchWithNext(View draggedView, View nextView);
 
     /**
-     * Define how the switched view should be animated.
-     * <p/>
-     * See also :
-     * {@link DragBehavior#shouldSwitchWithNext(android.view.View, android.view.View)}
-     * {@link DragBehavior#shouldSwitchWithPrevious(android.view.View, android.view.View)}
-     *
-     * @param viewToAnimate view from witch the animator should be created.
-     * @param dest          current view at the destination.
-     * @return animator started on the viewToSwitch.
-     */
-    public ViewPropertyAnimator getSwitchAnimator(View viewToAnimate, View dest);
-
-    /**
      * Define how the dragged view will be animated once the user release it.
      *
      * @param viewToAnimate view from witch the animator should be created.

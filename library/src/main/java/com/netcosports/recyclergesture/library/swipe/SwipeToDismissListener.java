@@ -27,11 +27,12 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
     private int mSwipingSlop;
     private VelocityTracker mVelocityTracker;
     private float mTranslationX;
-    private boolean mEnable = false;
+    private boolean mEnabled;
     private View mSwipeView;
     private SwipeToDismissDirection mAllowedSwipeToDismissDirection = SwipeToDismissDirection.NONE;
     private SwipeToDismissStrategy mDismissStrategy;
     private SwipeToDismissGesture.Dismisser mDismisser;
+    private boolean mDisallowIntercept;
 
 
     /**
@@ -42,8 +43,8 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
      * @param dismisser    Dismisser used to process to the dismiss when dismiss motion is triggered.
      * @param strategy     strategy applied for dismiss motion, if null all items will follow the main policy.
      */
-    public SwipeToDismissListener(RecyclerView recyclerView, SwipeToDismissDirection direction,
-                                  SwipeToDismissStrategy strategy, SwipeToDismissGesture.Dismisser dismisser) {
+    SwipeToDismissListener(RecyclerView recyclerView, SwipeToDismissDirection direction,
+                           SwipeToDismissStrategy strategy, SwipeToDismissGesture.Dismisser dismisser) {
 
         ViewConfiguration vc = ViewConfiguration.get(recyclerView.getContext());
         mSlop = vc.getScaledTouchSlop();
@@ -58,6 +59,8 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
             mDismissStrategy = strategy;
         }
         mDismissStrategy.setDefaultSwipeToDismissDirection(direction);
+        mEnabled = true;
+        mDisallowIntercept = false;
     }
 
     /**
@@ -66,7 +69,7 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
      * @param enabled true to enable swipe to dismiss motion.
      */
     public void setEnabled(boolean enabled) {
-        mEnable = !enabled;
+        mEnabled = enabled;
     }
 
     @Override
@@ -94,8 +97,13 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
     }
 
     @Override
+    public void onRequestDisallowInterceptTouchEvent(boolean disallowIntercept) {
+        mDisallowIntercept = disallowIntercept;
+    }
+
+    @Override
     public boolean onInterceptTouchEvent(final RecyclerView view, MotionEvent motionEvent) {
-        if (mEnable) {
+        if (!mEnabled || mDisallowIntercept) {
             return false;
         }
         // offset because the view is translated during swipe
@@ -118,7 +126,7 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
     }
 
     private boolean down(MotionEvent motionEvent) {
-        if (mEnable) {
+        if (!mEnabled || mDisallowIntercept) {
             return false;
         }
 
@@ -128,7 +136,7 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
         if (mSwipeView == null) {
             return false;
         }
-        int pos = mRecyclerView.getChildPosition(mSwipeView);
+        int pos = mRecyclerView.getChildAdapterPosition(mSwipeView);
 
         // check specific policy for a given item.
         mAllowedSwipeToDismissDirection = mDismissStrategy.getDismissDirection(pos);
@@ -149,11 +157,11 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
         }
 
         mSwipeView.animate()
-                .translationX(0)
-                .translationY(0)
-                .alpha(1)
-                .setDuration(mAnimationTime)
-                .setListener(null);
+            .translationX(0)
+            .translationY(0)
+            .alpha(1)
+            .setDuration(mAnimationTime)
+            .setListener(null);
 
         mVelocityTracker.recycle();
         mVelocityTracker = null;
@@ -165,7 +173,7 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
     }
 
     private void up(MotionEvent motionEvent) {
-        if (mEnable || mVelocityTracker == null || mSwipeView == null || !mSwiping) {
+        if (!mEnabled || mVelocityTracker == null || mSwipeView == null || !mSwiping) {
             return;
         }
         mSwipeView.setPressed(false);
@@ -175,11 +183,11 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
         mVelocityTracker.computeCurrentVelocity(1000);
 
         boolean isDismissTriggered = mAllowedSwipeToDismissDirection.triggerDismiss(deltaX, deltaY,
-                mSwipeView, mVelocityTracker, mMinFlingVelocity, mMaxFlingVelocity);
+            mSwipeView, mVelocityTracker, mMinFlingVelocity, mMaxFlingVelocity);
 
         if (isDismissTriggered) {
             // dismiss
-            final int pos = mRecyclerView.getChildPosition(mSwipeView);
+            final int pos = mRecyclerView.getChildAdapterPosition(mSwipeView);
             final View swipeViewCopy = mSwipeView;
             mAllowedSwipeToDismissDirection.animateTriggeredDismiss(mSwipeView, mAnimationTime);
 
@@ -198,18 +206,18 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
         } else if (mSwiping) {
             // cancel
             mSwipeView.animate()
-                    .translationX(0)
-                    .translationY(0)
-                    .alpha(1)
-                    .setDuration(mAnimationTime)
-                    .setListener(null);
+                .translationX(0)
+                .translationY(0)
+                .alpha(1)
+                .setDuration(mAnimationTime)
+                .setListener(null);
         }
 
         resetMotion();
     }
 
     private boolean move(MotionEvent motionEvent) {
-        if (mSwipeView == null || mVelocityTracker == null || mEnable) {
+        if (mSwipeView == null || mVelocityTracker == null || !mEnabled) {
             return false;
         }
 
@@ -224,23 +232,23 @@ class SwipeToDismissListener implements RecyclerView.OnItemTouchListener {
 
             MotionEvent cancelEvent = MotionEvent.obtain(motionEvent);
             cancelEvent.setAction(MotionEvent.ACTION_CANCEL
-                    | (motionEvent.getActionIndex() << MotionEvent.ACTION_POINTER_INDEX_SHIFT));
+                | (motionEvent.getActionIndex() << MotionEvent.ACTION_POINTER_INDEX_SHIFT));
             mSwipeView.onTouchEvent(cancelEvent);
         }
 
         //Prevent swipes to disallowed directions
         if ((deltaX < 0 && mAllowedSwipeToDismissDirection == SwipeToDismissDirection.RIGHT)
-                || (deltaX > 0 && mAllowedSwipeToDismissDirection == SwipeToDismissDirection.LEFT)
-                || (deltaY > 0 && mAllowedSwipeToDismissDirection == SwipeToDismissDirection.TOP)
-                || (deltaY < 0 && mAllowedSwipeToDismissDirection == SwipeToDismissDirection.BOTTOM)) {
+            || (deltaX > 0 && mAllowedSwipeToDismissDirection == SwipeToDismissDirection.LEFT)
+            || (deltaY > 0 && mAllowedSwipeToDismissDirection == SwipeToDismissDirection.TOP)
+            || (deltaY < 0 && mAllowedSwipeToDismissDirection == SwipeToDismissDirection.BOTTOM)) {
             if (mSwiping) {
                 // cancel
                 mSwipeView.animate()
-                        .translationX(0)
-                        .translationY(0)
-                        .alpha(1)
-                        .setDuration(mAnimationTime)
-                        .setListener(null);
+                    .translationX(0)
+                    .translationY(0)
+                    .alpha(1)
+                    .setDuration(mAnimationTime)
+                    .setListener(null);
             }
             resetMotion();
             return false;
